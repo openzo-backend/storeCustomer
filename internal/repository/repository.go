@@ -16,8 +16,9 @@ type StoreCustomerRepository interface {
 	UpdateStoreCustomer(StoreCustomer models.StoreCustomer) (models.StoreCustomer, error)
 	// GetStoreCustomersByUserID(ctx *gin.Context, user_data_id string) ([]models.StoreCustomer, error)
 	GetStoreCustomersByUserID(user_data_id string) ([]models.StoreCustomer, error)
-	ChangeStoreCustomerStatus(id string, status string) (models.StoreCustomer, error)
+
 	DeleteStoreCustomer(id string) error
+	GetUserIdByPhone(phone string) (string, error)
 	// ChangeStoreCustomerStatus(ctx *gin.Context, id string, status string) (models.StoreCustomer, error)
 	// Add more methods for other StoreCustomer operations (GetStoreCustomerByEmail, UpdateStoreCustomer, etc.)
 
@@ -32,15 +33,20 @@ func NewStoreCustomerRepository(db *gorm.DB) StoreCustomerRepository {
 	return &storeCustomerRepository{db: db}
 }
 
-func (r *storeCustomerRepository) CreateStoreCustomer(StoreCustomer models.StoreCustomer) (models.StoreCustomer, error) {
-	StoreCustomer.ID = uuid.New().String()
-	tx := r.db.Create(&StoreCustomer)
+func (r *storeCustomerRepository) CreateStoreCustomer(storeCustomer models.StoreCustomer) (models.StoreCustomer, error) {
+	storeCustomer.ID = uuid.New().String()
+	if storeCustomer.PhoneNo != "" {
+		user_id, _ := r.GetUserIdByPhone(storeCustomer.PhoneNo)
+
+		storeCustomer.UserID = user_id
+	}
+	tx := r.db.Create(&storeCustomer)
 
 	if tx.Error != nil {
 		return models.StoreCustomer{}, tx.Error
 	}
 
-	return StoreCustomer, nil
+	return storeCustomer, nil
 }
 
 func (r *storeCustomerRepository) GetStoreCustomerByID(id string) (models.StoreCustomer, error) {
@@ -78,18 +84,13 @@ func (r *storeCustomerRepository) GetStoreCustomersByUserID(user_data_id string)
 	return StoreCustomers, nil
 }
 
-func (r *storeCustomerRepository) ChangeStoreCustomerStatus(id string, status string) (models.StoreCustomer, error) {
-	var StoreCustomer models.StoreCustomer
-	tx := r.db.Model(&StoreCustomer).Where("id = ?", id).Update("status", status)
-	if tx.Error != nil {
-		return models.StoreCustomer{}, tx.Error
-	}
-
-	return StoreCustomer, nil
-}
-
 func (r *storeCustomerRepository) UpdateStoreCustomer(storeCustomer models.StoreCustomer) (models.StoreCustomer, error) {
 
+	if storeCustomer.PhoneNo != "" {
+		user_id, _ := r.GetUserIdByPhone(storeCustomer.PhoneNo)
+
+		storeCustomer.UserID = user_id
+	}
 	tx := r.db.Session(&gorm.Session{FullSaveAssociations: true}).Save(&storeCustomer)
 	if tx.Error != nil {
 		return models.StoreCustomer{}, tx.Error
@@ -105,6 +106,17 @@ func (r *storeCustomerRepository) DeleteStoreCustomer(id string) error {
 	}
 
 	return nil
+}
+
+func (r *storeCustomerRepository) GetUserIdByPhone(phone string) (string, error) {
+	var user_id string
+	tx := r.db.Table("users").Select("id").Where("phone = ?", phone).First(&user_id)
+
+	if tx.Error != nil {
+		return "", tx.Error
+	}
+
+	return user_id, nil
 }
 
 // Implement other repository methods (GetStoreCustomerByID, GetStoreCustomerByEmail, UpdateStoreCustomer, etc.) with proper error handling
